@@ -1,0 +1,568 @@
+// =============================================================================
+// Kanishka Opticals — Prisma Schema
+// PostgreSQL 16 | Prisma 5.x
+// Run: pnpm db:migrate   (dev) | pnpm db:migrate:prod (production)
+// =============================================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearch", "fullTextIndex"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Separate read replica URL for production read-heavy queries
+  // directUrl = env("DATABASE_READ_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  CUSTOMER
+  STAFF
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum Gender {
+  MEN
+  WOMEN
+  UNISEX
+  KIDS
+}
+
+enum FrameSize {
+  S
+  M
+  L
+  XL
+}
+
+enum LensType {
+  ZERO_POWER
+  SINGLE_VISION
+  BIFOCAL
+  PROGRESSIVE
+}
+
+enum LensCoating {
+  NONE
+  ANTI_GLARE
+  BLUE_CUT
+  PHOTOCHROMIC
+  POLARIZED
+  ANTI_GLARE_BLUE_CUT
+}
+
+enum LensMaterial {
+  CR39
+  POLYCARBONATE
+  TRIVEX
+  HIGH_INDEX_1_6
+  HIGH_INDEX_1_67
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  PACKED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  CREATED
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  UPI
+  CARD
+  NETBANKING
+  COD
+  EMI
+  WALLET
+}
+
+enum AppointmentStatus {
+  BOOKED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum CouponType {
+  PERCENT
+  FLAT
+  FREE_SHIPPING
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USERS & ADDRESSES
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id             String    @id @default(uuid())
+  name           String
+  email          String    @unique
+  phone          String    @unique
+  passwordHash   String    @map("password_hash")
+  role           UserRole  @default(CUSTOMER)
+  isVerified     Boolean   @default(false) @map("is_verified")
+  isActive       Boolean   @default(true) @map("is_active")
+  twoFaEnabled   Boolean   @default(false) @map("two_fa_enabled")
+  twoFaSecret    String?   @map("two_fa_secret")
+  lastLoginAt    DateTime? @map("last_login_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  addresses      Address[]
+  prescriptions  Prescription[]
+  orders         Order[]
+  appointments   Appointment[]
+  carts          Cart[]
+  auditLogs      AuditLog[]
+
+  @@index([email])
+  @@index([phone])
+  @@index([role])
+  @@map("users")
+}
+
+model Address {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  name      String
+  line1     String
+  line2     String?
+  city      String
+  state     String
+  pincode   String
+  phone     String
+  isDefault Boolean  @default(false) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@index([userId])
+  @@map("addresses")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CATALOG
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Category {
+  id          String     @id @default(uuid())
+  parentId    String?    @map("parent_id")
+  name        String
+  slug        String     @unique
+  description String?
+  imageUrl    String?    @map("image_url")
+  sortOrder   Int        @default(0) @map("sort_order")
+  isActive    Boolean    @default(true) @map("is_active")
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
+  products Product[]
+
+  @@index([slug])
+  @@index([parentId])
+  @@index([isActive])
+  @@map("categories")
+}
+
+model Brand {
+  id        String    @id @default(uuid())
+  name      String
+  slug      String    @unique
+  logoUrl   String?   @map("logo_url")
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  products Product[]
+
+  @@index([slug])
+  @@index([isActive])
+  @@map("brands")
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  categoryId  String   @map("category_id")
+  brandId     String   @map("brand_id")
+  name        String
+  slug        String   @unique
+  description String?  @db.Text
+  gender      Gender   @default(UNISEX)
+  frameShape  String?  @map("frame_shape")
+  material    String?
+  isActive    Boolean  @default(true) @map("is_active")
+  isFeatured  Boolean  @default(false) @map("is_featured")
+  metaTitle   String?  @map("meta_title")
+  metaDesc    String?  @map("meta_desc")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  category Category        @relation(fields: [categoryId], references: [id])
+  brand    Brand           @relation(fields: [brandId], references: [id])
+  variants ProductVariant[]
+
+  @@index([categoryId])
+  @@index([brandId])
+  @@index([isActive])
+  @@index([isFeatured])
+  @@index([gender])
+  @@index([frameShape])
+  @@index([slug])
+  @@map("products")
+}
+
+model ProductVariant {
+  id            String    @id @default(uuid())
+  productId     String    @map("product_id")
+  sku           String    @unique
+  colour        String
+  size          String?
+  frameWidthMm  Int?      @map("frame_width_mm")
+  price         Decimal   @db.Decimal(10, 2)
+  mrp           Decimal   @db.Decimal(10, 2)
+  stock         Int       @default(0)
+  imageUrls     String[]  @map("image_urls")
+  isDefault     Boolean   @default(false) @map("is_default")
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@index([productId])
+  @@index([sku])
+  @@index([price])
+  @@index([stock])
+  @@index([colour])
+  @@index([isActive])
+  @@map("product_variants")
+}
+
+model LensOption {
+  id           String      @id @default(uuid())
+  type         LensType
+  coating      LensCoating @default(NONE)
+  material     LensMaterial @default(CR39)
+  addOnPrice   Decimal     @default(0) @db.Decimal(10, 2) @map("add_on_price")
+  label        String      // Human-readable: "Anti-Glare + Blue Cut (Polycarbonate)"
+  isActive     Boolean     @default(true) @map("is_active")
+  sortOrder    Int         @default(0) @map("sort_order")
+  createdAt    DateTime    @default(now()) @map("created_at")
+
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@index([type])
+  @@index([isActive])
+  @@map("lens_options")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRESCRIPTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Prescription {
+  id                   String    @id @default(uuid())
+  userId               String    @map("user_id")
+  name                 String    // Patient name on prescription
+  // Right eye
+  rightSph             Decimal?  @db.Decimal(5, 2) @map("right_sph")
+  rightCyl             Decimal?  @db.Decimal(5, 2) @map("right_cyl")
+  rightAxis            Int?      @map("right_axis")
+  rightAdd             Decimal?  @db.Decimal(5, 2) @map("right_add")
+  // Left eye
+  leftSph              Decimal?  @db.Decimal(5, 2) @map("left_sph")
+  leftCyl              Decimal?  @db.Decimal(5, 2) @map("left_cyl")
+  leftAxis             Int?      @map("left_axis")
+  leftAdd              Decimal?  @db.Decimal(5, 2) @map("left_add")
+  // Pupillary distance
+  pd                   Decimal?  @db.Decimal(5, 2)
+  fileUrl              String?   @map("file_url")   // S3 private bucket key
+  validUntil           DateTime? @map("valid_until")
+  // DPDP Act 2023 consent
+  consentGiven         Boolean   @default(false) @map("consent_given")
+  consentAt            DateTime? @map("consent_at")
+  deletionRequestedAt  DateTime? @map("deletion_requested_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@index([userId])
+  @@index([validUntil])
+  @@index([deletionRequestedAt])
+  @@map("prescriptions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CART
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Cart {
+  id        String     @id @default(uuid())
+  userId    String?    @map("user_id")   // Null for guest carts (stored in Redis)
+  sessionId String?    @map("session_id")
+  expiresAt DateTime?  @map("expires_at")
+  createdAt DateTime   @default(now()) @map("created_at")
+
+  user  User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CartItem[]
+
+  @@index([userId])
+  @@index([sessionId])
+  @@map("carts")
+}
+
+model CartItem {
+  id             String  @id @default(uuid())
+  cartId         String  @map("cart_id")
+  variantId      String  @map("variant_id")
+  lensOptionId   String? @map("lens_option_id")
+  prescriptionId String? @map("prescription_id")
+  quantity       Int     @default(1)
+  unitPrice      Decimal @db.Decimal(10, 2) @map("unit_price")
+  addedAt        DateTime @default(now()) @map("added_at")
+
+  cart         Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variant      ProductVariant @relation(fields: [variantId], references: [id])
+  lensOption   LensOption?    @relation(fields: [lensOptionId], references: [id])
+  prescription Prescription?  @relation(fields: [prescriptionId], references: [id])
+
+  @@unique([cartId, variantId, lensOptionId])
+  @@index([cartId])
+  @@map("cart_items")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ORDERS & PAYMENTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Order {
+  id                String      @id @default(uuid())
+  userId            String?     @map("user_id")   // Null for guest orders
+  orderNumber       String      @unique @map("order_number")
+  shippingAddressId String?     @map("shipping_address_id")
+  status            OrderStatus @default(PENDING)
+  subtotal          Decimal     @db.Decimal(10, 2)
+  discount          Decimal     @default(0) @db.Decimal(10, 2)
+  shippingFee       Decimal     @default(0) @db.Decimal(10, 2) @map("shipping_fee")
+  taxAmount         Decimal     @default(0) @db.Decimal(10, 2) @map("tax_amount")
+  total             Decimal     @db.Decimal(10, 2)
+  couponCode        String?     @map("coupon_code")
+  trackingNumber    String?     @map("tracking_number")
+  carrier           String?
+  guestEmail        String?     @map("guest_email")
+  guestPhone        String?     @map("guest_phone")
+  notes             String?     @db.Text
+  invoiceUrl        String?     @map("invoice_url")  // S3 URL of GST invoice PDF
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+
+  user            User?        @relation(fields: [userId], references: [id])
+  shippingAddress Address?     @relation(fields: [shippingAddressId], references: [id])
+  items           OrderItem[]
+  payments        Payment[]
+  refunds         Refund[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([orderNumber])
+  @@map("orders")
+}
+
+model OrderItem {
+  id             String  @id @default(uuid())
+  orderId        String  @map("order_id")
+  variantId      String  @map("variant_id")
+  lensOptionId   String? @map("lens_option_id")
+  prescriptionId String? @map("prescription_id")
+  // Snapshot fields — prices stored at time of purchase
+  productName    String  @map("product_name")
+  variantSku     String  @map("variant_sku")
+  colour         String
+  imageUrl       String? @map("image_url")
+  quantity       Int
+  unitPrice      Decimal @db.Decimal(10, 2) @map("unit_price")
+  totalPrice     Decimal @db.Decimal(10, 2) @map("total_price")
+
+  order        Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant      ProductVariant @relation(fields: [variantId], references: [id])
+  lensOption   LensOption?    @relation(fields: [lensOptionId], references: [id])
+  prescription Prescription?  @relation(fields: [prescriptionId], references: [id])
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model Payment {
+  id                  String        @id @default(uuid())
+  orderId             String        @map("order_id")
+  razorpayOrderId     String?       @unique @map("razorpay_order_id")
+  razorpayPaymentId   String?       @unique @map("razorpay_payment_id")
+  razorpaySignature   String?       @map("razorpay_signature")
+  method              PaymentMethod
+  status              PaymentStatus @default(CREATED)
+  amount              Decimal       @db.Decimal(10, 2)
+  currency            String        @default("INR")
+  failureReason       String?       @map("failure_reason")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+
+  order   Order    @relation(fields: [orderId], references: [id])
+  refunds Refund[]
+
+  @@index([orderId])
+  @@index([status])
+  @@map("payments")
+}
+
+model Refund {
+  id               String  @id @default(uuid())
+  paymentId        String  @map("payment_id")
+  orderId          String  @map("order_id")
+  razorpayRefundId String? @unique @map("razorpay_refund_id")
+  amount           Decimal @db.Decimal(10, 2)
+  reason           String?
+  status           String  @default("INITIATED") // INITIATED | PROCESSED | FAILED
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  payment Payment @relation(fields: [paymentId], references: [id])
+  order   Order   @relation(fields: [orderId], references: [id])
+
+  @@index([paymentId])
+  @@index([orderId])
+  @@map("refunds")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COUPONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Coupon {
+  id             String     @id @default(uuid())
+  code           String     @unique
+  type           CouponType
+  value          Decimal    @db.Decimal(10, 2)
+  minOrderValue  Decimal    @default(0) @db.Decimal(10, 2) @map("min_order_value")
+  maxDiscount    Decimal?   @db.Decimal(10, 2) @map("max_discount")
+  maxUses        Int?       @map("max_uses")
+  usedCount      Int        @default(0) @map("used_count")
+  validFrom      DateTime   @map("valid_from")
+  validUntil     DateTime   @map("valid_until")
+  isActive       Boolean    @default(true) @map("is_active")
+  createdAt      DateTime   @default(now()) @map("created_at")
+
+  @@index([code])
+  @@index([isActive, validFrom, validUntil])
+  @@map("coupons")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EYE TEST APPOINTMENTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Store {
+  id           String   @id @default(uuid())
+  name         String
+  address      String
+  city         String
+  state        String
+  pincode      String
+  phone        String
+  lat          Decimal? @db.Decimal(10, 7)
+  lng          Decimal? @db.Decimal(10, 7)
+  workingHours Json?    @map("working_hours") // { mon: "9:00-19:00", ... }
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  appointments Appointment[]
+
+  @@index([isActive])
+  @@map("stores")
+}
+
+model Appointment {
+  id              String            @id @default(uuid())
+  userId          String?           @map("user_id")
+  storeId         String            @map("store_id")
+  guestName       String?           @map("guest_name")
+  guestPhone      String?           @map("guest_phone")
+  guestEmail      String?           @map("guest_email")
+  appointmentDate DateTime          @map("appointment_date") @db.Date
+  slotTime        String            @map("slot_time") // "10:00"
+  status          AppointmentStatus @default(BOOKED)
+  notes           String?           @db.Text
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  user  User?  @relation(fields: [userId], references: [id])
+  store Store  @relation(fields: [storeId], references: [id])
+
+  @@index([storeId, appointmentDate])
+  @@index([userId])
+  @@index([status])
+  @@map("appointments")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FEATURE FLAGS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model FeatureFlag {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  enabled     Boolean  @default(false)
+  description String?
+  conditions  Json?    // Future: role-based / % rollout conditions
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([key])
+  @@map("feature_flags")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUDIT LOG (admin actions)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  action     String   // e.g. "product.update", "order.cancel"
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  before     Json?
+  after      Json?
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

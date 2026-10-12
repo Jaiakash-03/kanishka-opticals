@@ -1,0 +1,14 @@
+{
+  "name": "@kanishka/eslint-config",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shared ESLint configuration for Kanishka Opticals monorepo",
+  "main": "index.js",
+  "files": ["index.js", "nextjs.js", "nestjs.js"],
+  "dependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.8.0",
+    "@typescript-eslint/parser": "^8.8.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.30.0"
+  }
+}

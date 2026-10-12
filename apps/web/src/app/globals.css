@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── CSS Variables ────────────────────────────────────────────────────────── */
+:root {
+  --font-inter: 'Inter', system-ui, sans-serif;
+  --font-playfair: 'Playfair Display', Georgia, serif;
+
+  /* Scrollbar */
+  --scrollbar-width: 6px;
+  --scrollbar-track: #f1f5f9;
+  --scrollbar-thumb: #94a3b8;
+}
+
+/* ── Base Styles ────────────────────────────────────────────────────────────── */
+@layer base {
+  * {
+    box-sizing: border-box;
+    padding: 0;
+    margin: 0;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-white text-gray-900 font-sans;
+    min-height: 100vh;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: var(--scrollbar-width); }
+  ::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+  ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 9999px; }
+
+  /* Focus visible */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand-500;
+  }
+
+  /* Images */
+  img, video { max-width: 100%; height: auto; }
+}
+
+/* ── Component Styles ─────────────────────────────────────────────────────── */
+@layer components {
+  /* Skeleton loader */
+  .skeleton {
+    @apply bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200;
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  /* Product card hover effect */
+  .product-card {
+    @apply relative overflow-hidden rounded-2xl bg-white shadow-card transition-all duration-300;
+  }
+
+  .product-card:hover {
+    @apply shadow-card-hover -translate-y-1;
+  }
+
+  /* Badge */
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  /* Price display */
+  .price {
+    @apply text-xl font-bold text-gray-900;
+  }
+
+  .price-original {
+    @apply text-sm text-gray-400 line-through;
+  }
+
+  .price-discount {
+    @apply text-sm font-semibold text-green-600;
+  }
+}
+
+/* ── Utility Extensions ───────────────────────────────────────────────────── */
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+  .text-pretty { text-wrap: pretty; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}

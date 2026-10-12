@@ -1,0 +1,58 @@
+FROM node:20-alpine AS base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable
+
+# 1. Prune step
+FROM base AS builder
+# Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
+RUN apk update && apk add --no-cache libc6-compat
+WORKDIR /app
+RUN pnpm install -g turbo
+COPY . .
+RUN turbo prune @kanishka/api --docker
+
+# 2. Build step
+FROM base AS installer
+RUN apk update && apk add --no-cache libc6-compat
+WORKDIR /app
+# Install dependencies
+COPY --from=builder /app/out/json/ .
+COPY --from=builder /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
+# We need to install everything, including dev dependencies for the build
+RUN pnpm install --frozen-lockfile
+
+# Build the project and its dependencies
+COPY --from=builder /app/out/full/ .
+# Generate Prisma Client
+RUN cd apps/api && pnpm exec prisma generate
+# Build using turbo
+RUN pnpm turbo run build --filter=@kanishka/api...
+
+# 3. Production runner
+FROM base AS runner
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nestjs
+
+COPY --from=installer /app/apps/api/package.json .
+
+# Automatically leverage output traces to reduce image size
+COPY --from=installer --chown=nestjs:nodejs /app/apps/api/dist ./apps/api/dist
+COPY --from=installer --chown=nestjs:nodejs /app/apps/api/node_modules ./apps/api/node_modules
+# Prisma files need to be copied for migrations/runtime
+COPY --from=installer --chown=nestjs:nodejs /app/apps/api/prisma ./apps/api/prisma
+# Note: In a real monorepo setup, you'd prune node_modules for production.
+# For simplicity, we are keeping this as is, but consider `pnpm deploy` for optimal prod image.
+
+USER nestjs
+
+EXPOSE 3001
+
+ENV PORT 3001
+ENV NODE_ENV production
+
+# Run database migrations before starting the app
+CMD ["sh", "-c", "npx prisma migrate deploy --schema=./apps/api/prisma/schema.prisma && node apps/api/dist/src/main"]
